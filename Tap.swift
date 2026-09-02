@@ -29,6 +29,9 @@ private final class Worker {
     var hidden = false
     var winHold = false
     var winGen = 0
+    var quietUntil: UInt64 = 0
+    var accDx: Int32 = 0
+    var accDy: Int32 = 0
     var btn: [UInt8] = [0, 0, 0, 0]
     var sock: Int32 = -1
     var guardFd: Int32 = -1
@@ -270,6 +273,9 @@ private final class Worker {
         let times = downNow ? 1 : 3
         for _ in 0..<times { send(pkt) }
         btn[b] = d
+        quietUntil = DispatchTime.now().uptimeNanoseconds + 500_000_000
+        accDx = 0
+        accDy = 0
     }
 
     private func releaseButtons() {
@@ -394,9 +400,23 @@ private final class Worker {
         if mouseQuiet { return Unmanaged.passUnretained(ev) }
         switch type {
         case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
-            let dx = Int32(ev.getIntegerValueField(.mouseEventDeltaX))
-            let dy = Int32(ev.getIntegerValueField(.mouseEventDeltaY))
+            var dx = Int32(ev.getIntegerValueField(.mouseEventDeltaX))
+            var dy = Int32(ev.getIntegerValueField(.mouseEventDeltaY))
             if dx != 0 || dy != 0 {
+                let held = btn[1] != 0 || btn[2] != 0 || btn[3] != 0
+                let t = DispatchTime.now().uptimeNanoseconds
+                if t < quietUntil || held {
+                    accDx += dx
+                    accDy += dy
+                    if !held || abs(accDx) + abs(accDy) < 48 {
+                        return Unmanaged.passUnretained(ev)
+                    }
+                    dx = accDx
+                    dy = accDy
+                    accDx = 0
+                    accDy = 0
+                    quietUntil = 0
+                }
                 var b = [UInt8](repeating: 0, count: 9)
                 b[0] = 3
                 putI32(&b, 1, dx); putI32(&b, 5, dy)
