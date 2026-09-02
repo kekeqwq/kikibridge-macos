@@ -27,6 +27,7 @@ private final class Worker {
     var cmdHeld = false
     var cmdTab = false
     var winDown = false
+    var localCmd = false
     var hidden = false
     var quietUntil: UInt64 = 0
     var accDx: Int32 = 0
@@ -285,6 +286,7 @@ private final class Worker {
         cmdHeld = false
         cmdTab = false
         winDown = false
+        if localCmd { postLocalCmd(false) }
         lockPointer(enable)
         Karabiner.set(enable, wait: !enable)
         if !enable {
@@ -333,6 +335,18 @@ private final class Worker {
 
     private var mouseQuiet: Bool { cmdTab }
 
+    private let kInject: Int64 = 0x4B425443
+
+    private func postLocalCmd(_ down: Bool) {
+        if localCmd == down { return }
+        guard let src = CGEventSource(stateID: .hidSystemState) else { return }
+        guard let e = CGEvent(keyboardEventSource: src, virtualKey: 0x37, keyDown: down) else { return }
+        e.flags = down ? .maskCommand : []
+        e.setIntegerValueField(.eventSourceUserData, kInject)
+        e.post(tap: .cgAnnotatedSessionEventTap)
+        localCmd = down
+    }
+
     private func commandBegin() {
         if cmdHeld { return }
         cmdHeld = true
@@ -341,6 +355,7 @@ private final class Worker {
     }
 
     private func commandEnd() {
+        if localCmd { postLocalCmd(false) }
         if !cmdHeld && !winDown { return }
         cmdHeld = false
         if cmdTab {
@@ -369,6 +384,9 @@ private final class Worker {
             if let t = keyTap { CGEvent.tapEnable(tap: t, enable: true) }
             return Unmanaged.passUnretained(ev)
         }
+        if ev.getIntegerValueField(.eventSourceUserData) == kInject {
+            return Unmanaged.passUnretained(ev)
+        }
         if !on { return Unmanaged.passUnretained(ev) }
         let f = ev.flags
         if type == .flagsChanged {
@@ -376,7 +394,7 @@ private final class Worker {
             if kc == 0x37 || kc == 0x36 {
                 if f.contains(.maskCommand) { commandBegin() }
                 else { commandEnd() }
-                return Unmanaged.passUnretained(ev)
+                return nil
             }
             if cmdTab { return Unmanaged.passUnretained(ev) }
             handleFlags(kc, f)
@@ -387,7 +405,7 @@ private final class Worker {
             if kc == 0x37 || kc == 0x36 {
                 if type == .keyDown { commandBegin() }
                 else { commandEnd() }
-                return Unmanaged.passUnretained(ev)
+                return nil
             }
             if cmdTab { return Unmanaged.passUnretained(ev) }
             if (cmdHeld || f.contains(.maskCommand)) && kc == 0x30 {
@@ -400,6 +418,7 @@ private final class Worker {
                 releaseButtons()
                 releaseKeys()
                 lockPointer(false)
+                postLocalCmd(true)
                 return Unmanaged.passUnretained(ev)
             }
             if (cmdHeld || f.contains(.maskCommand)) && type == .keyDown && !winDown && !cmdTab {
