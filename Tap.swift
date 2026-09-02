@@ -264,14 +264,12 @@ private final class Worker {
         down = [UInt8](repeating: 0, count: 256)
     }
 
-    private func sendBtn(_ b: Int, _ downNow: Bool) {
+    private func sendBtn(_ b: Int, _ downNow: Bool, _ clicks: Int64) {
         if b < 1 || b > 3 { return }
         let d: UInt8 = downNow ? 1 : 0
-        if downNow && btn[b] != 0 { return }
-        if !downNow && btn[b] == 0 { return }
-        let pkt: [UInt8] = [4, UInt8(b), d]
-        let times = downNow ? 1 : 3
-        for _ in 0..<times { send(pkt) }
+        let c: UInt8 = clicks < 1 ? 1 : UInt8(min(clicks, 8))
+        let pkt: [UInt8] = [4, UInt8(b), d, c]
+        send(pkt)
         btn[b] = d
         quietUntil = DispatchTime.now().uptimeNanoseconds + 500_000_000
         accDx = 0
@@ -279,7 +277,7 @@ private final class Worker {
     }
 
     private func releaseButtons() {
-        for b in 1...3 { sendBtn(b, false) }
+        for b in 1...3 { sendBtn(b, false, 1) }
     }
 
     private func setBridged(_ enable: Bool) {
@@ -424,13 +422,13 @@ private final class Worker {
             }
             return Unmanaged.passUnretained(ev)
         case .leftMouseDown, .leftMouseUp:
-            sendBtn(1, type == .leftMouseDown)
+            sendBtn(1, type == .leftMouseDown, ev.getIntegerValueField(.mouseEventClickState))
             return Unmanaged.passUnretained(ev)
         case .rightMouseDown, .rightMouseUp:
-            sendBtn(2, type == .rightMouseDown)
+            sendBtn(2, type == .rightMouseDown, ev.getIntegerValueField(.mouseEventClickState))
             return Unmanaged.passUnretained(ev)
         case .otherMouseDown, .otherMouseUp:
-            sendBtn(3, type == .otherMouseDown)
+            sendBtn(3, type == .otherMouseDown, ev.getIntegerValueField(.mouseEventClickState))
             return Unmanaged.passUnretained(ev)
         case .scrollWheel:
             let d = Int32(ev.getIntegerValueField(.scrollWheelEventDeltaAxis1))
