@@ -27,7 +27,6 @@ private final class Worker {
     var cmdHeld = false
     var cmdTab = false
     var winDown = false
-    var localCmd = false
     var hidden = false
     var quietUntil: UInt64 = 0
     var accDx: Int32 = 0
@@ -286,7 +285,6 @@ private final class Worker {
         cmdHeld = false
         cmdTab = false
         winDown = false
-        if localCmd { postLocalCmd(false) }
         lockPointer(enable)
         Karabiner.set(enable, wait: !enable)
         if !enable {
@@ -337,14 +335,11 @@ private final class Worker {
 
     private let kInject: Int64 = 0x4B425443
 
-    private func postLocalCmd(_ down: Bool) {
-        if localCmd == down { return }
+    private func postLocalKey(_ vk: CGKeyCode, _ down: Bool) {
         guard let src = CGEventSource(stateID: .hidSystemState) else { return }
-        guard let e = CGEvent(keyboardEventSource: src, virtualKey: 0x37, keyDown: down) else { return }
-        e.flags = down ? .maskCommand : []
+        guard let e = CGEvent(keyboardEventSource: src, virtualKey: vk, keyDown: down) else { return }
         e.setIntegerValueField(.eventSourceUserData, value: kInject)
         e.post(tap: .cgAnnotatedSessionEventTap)
-        localCmd = down
     }
 
     private func commandBegin() {
@@ -355,7 +350,6 @@ private final class Worker {
     }
 
     private func commandEnd() {
-        if localCmd { postLocalCmd(false) }
         if !cmdHeld && !winDown { return }
         cmdHeld = false
         if cmdTab {
@@ -418,7 +412,13 @@ private final class Worker {
                 releaseButtons()
                 releaseKeys()
                 lockPointer(false)
-                postLocalCmd(true)
+                if type == .keyDown {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                        guard let self, self.cmdTab else { return }
+                        self.postLocalKey(0x24, true)
+                        self.postLocalKey(0x24, false)
+                    }
+                }
                 return Unmanaged.passUnretained(ev)
             }
             if (cmdHeld || f.contains(.maskCommand)) && type == .keyDown && !winDown && !cmdTab {
