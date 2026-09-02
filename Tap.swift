@@ -27,7 +27,8 @@ private final class Worker {
     var cmdHeld = false
     var cmdTab = false
     var winDown = false
-    var lastOther: pid_t = 0
+    var lastPong: UInt64 = 0
+    var lostPeer = false
     var escaping = false
     var hidden = false
     var quietUntil: UInt64 = 0
@@ -155,6 +156,7 @@ private final class Worker {
         sock = socket(AF_INET, SOCK_DGRAM, 0)
         if sock < 0 { return 5 }
         _ = fcntl(sock, F_SETFL, O_NONBLOCK)
+        lastPong = DispatchTime.now().uptimeNanoseconds
 
         let mm: CGEventMask =
             CGEventMaskBit(.mouseMoved) | CGEventMaskBit(.leftMouseDown) | CGEventMaskBit(.leftMouseUp) |
@@ -190,7 +192,10 @@ private final class Worker {
 
         let tick = DispatchSource.makeTimerSource(queue: .main)
         tick.schedule(deadline: .now() + 1, repeating: 1, leeway: .milliseconds(100))
-        tick.setEventHandler(handler: apply)
+        tick.setEventHandler { [weak self] in
+            self?.beat()
+            apply()
+        }
         tick.resume()
 
         let parkT = DispatchSource.makeTimerSource(queue: .main)
@@ -208,7 +213,37 @@ private final class Worker {
         shutdown()
         Pointer.reset()
         Karabiner.set(false, wait: true)
-        return 0
+        return lostPeer ? 8 : 0
+    }
+
+    private func drainPong() {
+        if sock < 0 { return }
+        var buf: UInt8 = 0
+        var from = sockaddr_in()
+        var flen = socklen_t(MemoryLayout<sockaddr_in>.size)
+        while true {
+            let n = withUnsafeMutablePointer(to: &from) { fp in
+                fp.withMemoryRebound(to: sockaddr.self, capacity: 1) { sp in
+                    recvfrom(self.sock, &buf, 1, MSG_DONTWAIT, sp, &flen)
+                }
+            }
+            if n <= 0 { break }
+            if buf == 2 {
+                lastPong = DispatchTime.now().uptimeNanoseconds
+            }
+        }
+    }
+
+    private func beat() {
+        if stop { return }
+        send([1])
+        drainPong()
+        let age = DispatchTime.now().uptimeNanoseconds &- lastPong
+        if age > 3_000_000_000 {
+            lostPeer = true
+            postState("lost")
+            shutdown()
+        }
     }
 
     private func resolve() -> Int32 {

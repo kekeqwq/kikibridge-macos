@@ -4,7 +4,7 @@ import Darwin
 import Foundation
 import MachO
 
-let kVersion = "0.7.21"
+let kVersion = "0.7.22"
 let kUpdated = "2026-09-02"
 let kPort: UInt16 = 5000
 
@@ -85,22 +85,29 @@ func probeHost(_ name: String) -> (ip: String?, warning: String?, error: String?
     let ip = String(cString: ipbuf)
     let fd = socket(AF_INET, SOCK_DGRAM, 0)
     if fd < 0 { return (nil, nil, "无法创建 UDP socket") }
-    var tv = timeval(tv_sec: 1, tv_usec: 0)
+    var tv = timeval(tv_sec: 0, tv_usec: 200_000)
     _ = setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
     _ = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
     var probe: UInt8 = 1
-    var w: ssize_t = -1
-    var se: Int32 = 0
-    for _ in 0..<8 {
-        w = sendto(fd, &probe, 1, 0, r.pointee.ai_addr, r.pointee.ai_addrlen)
-        se = errno
-        if w >= 0 { break }
-        if se != ENETUNREACH && se != EHOSTUNREACH && se != EHOSTDOWN && se != EADDRNOTAVAIL { break }
-        usleep(150_000)
+    var pong: UInt8 = 0
+    var ok = false
+    for _ in 0..<10 {
+        _ = sendto(fd, &probe, 1, 0, r.pointee.ai_addr, r.pointee.ai_addrlen)
+        var from = sockaddr_storage()
+        var flen = socklen_t(MemoryLayout<sockaddr_storage>.size)
+        let n = withUnsafeMutablePointer(to: &from) { fp in
+            fp.withMemoryRebound(to: sockaddr.self, capacity: 1) { sp in
+                recvfrom(fd, &pong, 1, 0, sp, &flen)
+            }
+        }
+        if n == 1 && pong == 2 {
+            ok = true
+            break
+        }
     }
     _ = close(fd)
-    if w < 0 && (se == ENETUNREACH || se == EHOSTUNREACH || se == EHOSTDOWN || se == EADDRNOTAVAIL) {
-        return (ip, "已解析 \(used) → \(ip):\(kPort)，UDP 探测失败（\(String(cString: strerror(se)))）。多半是 Windows 防火墙。可仍然启动。", nil)
+    if !ok {
+        return (nil, nil, "\(used)（\(ip):\(kPort)）没有回应。对端没开机、receiver 没开，或防火墙拦了 UDP 5000。开机完成后再点启动。")
     }
     return (ip, nil, nil)
 }
@@ -209,14 +216,6 @@ final class Bridge: ObservableObject {
             return
         }
         guard let ip = p.ip else { return }
-        if let w = p.warning {
-            let a = NSAlert()
-            a.messageText = "对端可能不通"
-            a.informativeText = w
-            a.addButton(withTitle: "仍然启动")
-            a.addButton(withTitle: "取消")
-            if a.runModal() != .alertFirstButtonReturn { return }
-        }
         peerIP = ip
         if !Karabiner.ensureRule() {
             let a = NSAlert()
@@ -306,6 +305,10 @@ final class Bridge: ObservableObject {
         paint()
         let code = waitExitCode(st)
         if code == 0 || code == 128 + SIGTERM { return }
+        if code == 8 {
+            alert("对端离线，已停止", "\(host) 没有回应。开机完成后再点启动。")
+            return
+        }
         var msg = "桥意外退出"
         if code == 2 { msg = "辅助功能未授权，子进程已退出。" }
         else if code == 3 { msg = "无法安装事件钩子。" }
