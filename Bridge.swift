@@ -4,7 +4,7 @@ import Darwin
 import Foundation
 import MachO
 
-let kVersion = "0.7.12"
+let kVersion = "0.7.14"
 let kUpdated = "2026-09-02"
 let kPort: UInt16 = 5000
 
@@ -218,6 +218,10 @@ final class Bridge: ObservableObject {
             if a.runModal() != .alertFirstButtonReturn { return }
         }
         peerIP = ip
+        if let err = Karabiner.installRule() {
+            alert("Karabiner 规则没写上", err)
+        }
+        Karabiner.set(true, wait: false)
         let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         if !AXIsProcessTrustedWithOptions(opts) {
             alert("需要辅助功能", "系统设置 → 隐私与安全性 → 辅助功能，勾选终端（nix run）或 KikiBridge，然后重新点启动。")

@@ -1,4 +1,4 @@
-# KikiBridge 0.7.12（macOS sender）
+# KikiBridge 0.7.14（macOS sender）
 
 macOS 27 托盘管理器。真正抓键鼠的是同一条二进制的 `--tap` 子进程；管理器退出（含崩溃、强制退出）会带走它。
 
@@ -31,14 +31,33 @@ nix run  --option sandbox false
 
 你一直开着 Karabiner。Command 的 **to_if_alone**（点一下变成空格/句号）发生在我们的钩子之前，所以怎么改 `Tap.swift` 的 Cmd 映射都没差。
 
-桥启动时会：
+桥启动时会尝试改 `~/.config/karabiner/karabiner.json`。若这份是 **nix 符号链接（只读）**，写不进去，会弹窗。
 
-1. 把规则写进 `~/.config/karabiner/karabiner.json`（当前 profile 最前面），Karabiner 自动重载
-2. `karabiner_cli --set-variables '{"kikibridge":1}'`
+那就打开 **Karabiner-Elements → Complex Modifications → Add your own rule**（不是 Add predefined rule），粘贴：
 
-第一次会备份 `karabiner.json.kikibridge.bak`。退出桥把变量设回 0。规则留着无妨（只有 `kikibridge=1` 才生效）。
+```json
+{
+  "description": "KikiBridge: Command 只当 Command",
+  "manipulators": [
+    {
+      "type": "basic",
+      "from": { "key_code": "left_command", "modifiers": { "optional": ["any"] } },
+      "to": [{ "key_code": "left_command" }],
+      "conditions": [{ "type": "variable_if", "name": "kikibridge", "value": 1 }]
+    },
+    {
+      "type": "basic",
+      "from": { "key_code": "right_command", "modifiers": { "optional": ["any"] } },
+      "to": [{ "key_code": "right_command" }],
+      "conditions": [{ "type": "variable_if", "name": "kikibridge", "value": 1 }]
+    }
+  ]
+}
+```
 
-不要只拷 `assets/complex_modifications`：主界面是已启用列表，assets 只出现在 **Add predefined rule**。
+或在 home-manager 里把这段放进 `profiles[].complex_modifications.rules` 最前面。
+
+`ls -l ~/.config/karabiner/karabiner.json` 若指向 `/nix/store`，只能走上面两条。
 
 ## 用法
 

@@ -617,8 +617,28 @@ enum Pointer {
 }
 
 enum Karabiner {
+    static let ruleJSON = """
+    {
+      "description": "KikiBridge: Command 只当 Command",
+      "manipulators": [
+        {
+          "type": "basic",
+          "from": { "key_code": "left_command", "modifiers": { "optional": ["any"] } },
+          "to": [{ "key_code": "left_command" }],
+          "conditions": [{ "type": "variable_if", "name": "kikibridge", "value": 1 }]
+        },
+        {
+          "type": "basic",
+          "from": { "key_code": "right_command", "modifiers": { "optional": ["any"] } },
+          "to": [{ "key_code": "right_command" }],
+          "conditions": [{ "type": "variable_if", "name": "kikibridge", "value": 1 }]
+        }
+      ]
+    }
+    """
+
     static func set(_ on: Bool, wait: Bool) {
-        if on { installRule() }
+        if on { _ = installRule() }
         let bins = [
             "/Library/Application Support/org.pqrs/Karabiner-Elements/bin/karabiner_cli",
             "/Applications/Karabiner-Elements.app/Contents/MacOS/karabiner_cli",
@@ -640,45 +660,54 @@ enum Karabiner {
         }
     }
 
-    static func installRule() {
-        let manipulator: [String: Any] = [
-            "type": "basic",
-            "from": [
-                "key_code": "left_command",
-                "modifiers": ["optional": ["any"]],
-            ],
-            "to": [["key_code": "left_command"]],
-            "conditions": [[
-                "type": "variable_if",
-                "name": "kikibridge",
-                "value": 1,
-            ]],
-        ]
-        let manipulatorR: [String: Any] = [
-            "type": "basic",
-            "from": [
-                "key_code": "right_command",
-                "modifiers": ["optional": ["any"]],
-            ],
-            "to": [["key_code": "right_command"]],
-            "conditions": [[
-                "type": "variable_if",
-                "name": "kikibridge",
-                "value": 1,
-            ]],
-        ]
-        let rule: [String: Any] = [
-            "description": "KikiBridge: Command 只当 Command",
-            "manipulators": [manipulator, manipulatorR],
-        ]
-        let path = NSHomeDirectory() + "/.config/karabiner/karabiner.json"
+    static func configPath() -> String? {
+        var cands: [String] = []
+        if let x = getenv("XDG_CONFIG_HOME") {
+            cands.append(String(cString: x) + "/karabiner/karabiner.json")
+        }
+        let home = NSHomeDirectory()
+        cands.append(contentsOf: [
+            home + "/.config/karabiner/karabiner.json",
+            home + "/Library/Application Support/org.pqrs/config/karabiner/karabiner.json",
+        ])
+        return cands.first { FileManager.default.fileExists(atPath: $0) }
+    }
+
+    static func selected(_ p: [String: Any]) -> Bool {
+        if let b = p["selected"] as? Bool { return b }
+        if let n = p["selected"] as? NSNumber { return n.boolValue }
+        return false
+    }
+
+    @discardableResult
+    static func installRule() -> String? {
+        guard let path = configPath() else {
+            return "找不到 karabiner.json。用「Add your own rule」粘贴：\n\(ruleJSON)"
+        }
+        var st = stat()
+        let isLink = lstat(path, &st) == 0 && (st.st_mode & S_IFMT) == S_IFLNK
         let fm = FileManager.default
+        if isLink || !fm.isWritableFile(atPath: path) {
+            return """
+            \(path) 是只读或 nix 符号链接，程序写不进去。
+
+            打开 Karabiner-Elements → Complex Modifications → Add your own rule，把这段存进去：
+
+            \(ruleJSON)
+            """
+        }
         guard let data = fm.contents(atPath: path),
               var root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              var profiles = root["profiles"] as? [[String: Any]]
-        else { return }
-        var idx = profiles.firstIndex { ($0["selected"] as? Bool) == true } ?? 0
-        if idx < 0 || idx >= profiles.count { idx = 0 }
+              var profiles = root["profiles"] as? [[String: Any]],
+              !profiles.isEmpty
+        else {
+            return "读不了 \(path)。Add your own rule 粘贴：\n\(ruleJSON)"
+        }
+        guard let rule = try? JSONSerialization.jsonObject(with: Data(ruleJSON.utf8)) as? [String: Any] else {
+            return "内置规则 JSON 坏了"
+        }
+        var idx = profiles.firstIndex(where: selected) ?? 0
+        if idx >= profiles.count { idx = 0 }
         var profile = profiles[idx]
         var cm = profile["complex_modifications"] as? [String: Any] ?? [:]
         var rules = cm["rules"] as? [[String: Any]] ?? []
@@ -688,10 +717,18 @@ enum Karabiner {
         profile["complex_modifications"] = cm
         profiles[idx] = profile
         root["profiles"] = profiles
-        guard let out = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted]) else { return }
+        guard let out = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .withoutEscapingSlashes]) else {
+            return "序列化失败"
+        }
         let bak = path + ".kikibridge.bak"
         if !fm.fileExists(atPath: bak) { try? fm.copyItem(atPath: path, toPath: bak) }
-        try? out.write(to: URL(fileURLWithPath: path))
+        do {
+            try out.write(to: URL(fileURLWithPath: path), options: .atomic)
+        } catch {
+            return "写入失败：\(error)\n改用 Add your own rule 粘贴：\n\(ruleJSON)"
+        }
+        fputs("kikibridge: wrote rule into \(path) rules=\(rules.count)\n", stderr)
+        return nil
     }
 }
 
