@@ -1,0 +1,12 @@
+result
+result-*
+.direnv
+.DS_Store
+flake.lock
+/.build
+*.xcodeproj
+xcuserdata/
+DerivedData/
+*.swp
+*~
+.idea
