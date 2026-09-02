@@ -4,7 +4,7 @@ import Darwin
 import Foundation
 import MachO
 
-let kVersion = "0.7.14"
+let kVersion = "0.7.15"
 let kUpdated = "2026-09-02"
 let kPort: UInt16 = 5000
 
@@ -218,8 +218,31 @@ final class Bridge: ObservableObject {
             if a.runModal() != .alertFirstButtonReturn { return }
         }
         peerIP = ip
-        if let err = Karabiner.installRule() {
-            alert("Karabiner 规则没写上", err)
+        if !Karabiner.ensureRule() {
+            let a = NSAlert()
+            a.messageText = "先在 Karabiner 里启用规则"
+            a.informativeText = """
+            已复制到剪贴板。
+
+            1. Complex Modifications
+            2. Add your own rule（不是 Add predefined rule）
+            3. 粘贴（⌘V）→ Save
+
+            保存后再点启动。
+            """
+            a.addButton(withTitle: "打开 Karabiner")
+            a.addButton(withTitle: "已经保存，继续")
+            a.addButton(withTitle: "取消")
+            let r = a.runModal()
+            if r == .alertFirstButtonReturn {
+                Karabiner.openSettings()
+                peerIP = nil
+                return
+            }
+            if r != .alertSecondButtonReturn {
+                peerIP = nil
+                return
+            }
         }
         Karabiner.set(true, wait: false)
         let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary

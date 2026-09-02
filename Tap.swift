@@ -376,9 +376,9 @@ private final class Worker {
             if kc == 0x37 || kc == 0x36 {
                 if f.contains(.maskCommand) { commandBegin() }
                 else { commandEnd() }
-                if cmdTab { return Unmanaged.passUnretained(ev) }
-                return nil
+                return Unmanaged.passUnretained(ev)
             }
+            if cmdTab { return Unmanaged.passUnretained(ev) }
             handleFlags(kc, f)
             return nil
         }
@@ -387,15 +387,18 @@ private final class Worker {
             if kc == 0x37 || kc == 0x36 {
                 if type == .keyDown { commandBegin() }
                 else { commandEnd() }
-                if cmdTab { return Unmanaged.passUnretained(ev) }
-                return nil
+                return Unmanaged.passUnretained(ev)
             }
+            if cmdTab { return Unmanaged.passUnretained(ev) }
             if (cmdHeld || f.contains(.maskCommand)) && kc == 0x30 {
                 cmdTab = true
                 if winDown {
                     sendKey(125, false, force: true)
                     winDown = false
                 }
+                send([7])
+                releaseButtons()
+                releaseKeys()
                 lockPointer(false)
                 return Unmanaged.passUnretained(ev)
             }
@@ -676,6 +679,43 @@ enum Karabiner {
     static func selected(_ p: [String: Any]) -> Bool {
         if let b = p["selected"] as? Bool { return b }
         if let n = p["selected"] as? NSNumber { return n.boolValue }
+        return false
+    }
+
+    static func copyRule() {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(ruleJSON, forType: .string)
+    }
+
+    static func ruleEnabled() -> Bool {
+        guard let path = configPath(),
+              let data = FileManager.default.contents(atPath: path),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let profiles = root["profiles"] as? [[String: Any]]
+        else { return false }
+        let profile = profiles.first(where: selected) ?? profiles.first
+        let rules = (profile?["complex_modifications"] as? [String: Any])?["rules"] as? [[String: Any]] ?? []
+        return rules.contains { ($0["description"] as? String)?.contains("KikiBridge") == true }
+    }
+
+    static func openSettings() {
+        let apps = [
+            "/Applications/Karabiner-Elements.app",
+            "/Applications/Karabiner-Elements.app/Contents/MacOS/Karabiner-Elements",
+        ]
+        for p in apps where FileManager.default.fileExists(atPath: p) {
+            NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/Karabiner-Elements.app"))
+            return
+        }
+        NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications"))
+    }
+
+    @discardableResult
+    static func ensureRule() -> Bool {
+        _ = installRule()
+        if ruleEnabled() { return true }
+        copyRule()
         return false
     }
 
