@@ -27,9 +27,6 @@ private final class Worker {
     var cmd = false
     var cmdTab = false
     var hidden = false
-    var winHold = false
-    var winSent = false
-    var winGen = 0
     var quietUntil: UInt64 = 0
     var accDx: Int32 = 0
     var accDy: Int32 = 0
@@ -165,7 +162,7 @@ private final class Worker {
         mouseListen = makeTap2(.cghidEventTap, mm, options: .listenOnly, kind: .listen)
         mouseTap = makeTap2(.cgSessionEventTap, mm, options: .defaultTap, kind: .eat)
         installKeyboard()
-        if keyTap == nil && hid == nil {
+        if keyTap == nil {
             fputs("kikibridge-tap: no keyboard source\n", stderr)
             return 3
         }
@@ -286,8 +283,6 @@ private final class Worker {
         on = enable
         cmd = false
         cmdTab = false
-        winHold = false
-        winSent = false
         lockPointer(enable)
         if !enable {
             releaseButtons()
@@ -335,36 +330,6 @@ private final class Worker {
 
     private var mouseQuiet: Bool { cmdTab }
 
-    private func commandUp() {
-        if cmdTab {
-            winHold = false
-            winSent = false
-            send([7])
-            releaseButtons()
-            releaseKeys()
-            if on { lockPointer(true) }
-        } else if winSent {
-            sendKey(125, false, force: true)
-            winSent = false
-            winHold = false
-        } else {
-            winHold = true
-            sendKey(125, true, force: true)
-            winGen += 1
-            let gen = winGen
-            for delay in [0.06, 0.14, 0.28] as [Double] {
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                    guard let self, gen == self.winGen else { return }
-                    self.sendKey(125, false, force: true)
-                    if delay >= 0.28 { self.winHold = false }
-                }
-            }
-        }
-        cmdTab = false
-        cmd = false
-        winSent = false
-    }
-
     private func keyEvent(_ type: CGEventType, _ ev: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let t = keyTap { CGEvent.tapEnable(tap: t, enable: true) }
@@ -373,15 +338,23 @@ private final class Worker {
         if !on { return Unmanaged.passUnretained(ev) }
         let f = ev.flags
         let cmdNow = f.contains(.maskCommand)
-        if cmdNow && !cmd {
-            cmdTab = false
-            winSent = false
-        }
+        if cmdNow && !cmd { cmdTab = false }
         cmd = cmdNow
         if type == .flagsChanged {
             let kc = Int(ev.getIntegerValueField(.keyboardEventKeycode))
             if kc == 0x37 || kc == 0x36 {
-                if !cmd { commandUp() }
+                if cmd && !cmdTab {
+                    sendKey(125, true, force: true)
+                } else {
+                    sendKey(125, false, force: true)
+                    if cmdTab {
+                        send([7])
+                        releaseButtons()
+                        releaseKeys()
+                        if on { lockPointer(true) }
+                    }
+                    cmdTab = false
+                }
                 return Unmanaged.passUnretained(ev)
             }
             handleFlags(kc, f)
@@ -392,21 +365,9 @@ private final class Worker {
             if kc == 0x37 || kc == 0x36 { return nil }
             if cmd && kc == 0x30 {
                 cmdTab = true
-                if winSent {
-                    sendKey(125, false)
-                    winSent = false
-                }
+                sendKey(125, false, force: true)
                 lockPointer(false)
                 return Unmanaged.passUnretained(ev)
-            }
-            if cmd {
-                if type == .keyDown && !winSent {
-                    sendKey(125, true)
-                    winSent = true
-                    winGen += 1
-                }
-                handleKey(kc, type == .keyDown, f)
-                return nil
             }
             handleKey(kc, type == .keyDown, f)
             return nil
@@ -487,19 +448,7 @@ private final class Worker {
     }
 
     private func hidValue(_ value: IOHIDValue) {
-        if !on { return }
-        let el = IOHIDValueGetElement(value)
-        if hidSkip(el) { return }
-        let page = UInt32(IOHIDElementGetUsagePage(el))
-        let usage = UInt32(IOHIDElementGetUsage(el))
-        let v = Int(IOHIDValueGetIntegerValue(value))
-        if page != UInt32(kHIDPage_KeyboardOrKeypad) || usage < 4 || usage > 255 { return }
-        if usage >= 0xE0 && usage <= 0xE7 { return }
-        let evdev = hidMap[Int(usage)]
-        if evdev == 0 { return }
-        if evdev == 125 || evdev == 126 { return }
-        if cmdTab || cmd || winHold { return }
-        sendKey(evdev, v != 0)
+        _ = value
     }
 
     private func hidSkip(_ el: IOHIDElement) -> Bool {
@@ -541,31 +490,6 @@ private final class Worker {
     private func installKeyboard() {
         let km = CGEventMaskBit(.keyDown) | CGEventMaskBit(.keyUp) | CGEventMaskBit(.flagsChanged)
         keyTap = makeTap2(.cgSessionEventTap, km, options: .defaultTap, kind: .key)
-
-        let mgr = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
-        let match: [[String: NSNumber]] = [
-            [
-                kIOHIDDeviceUsagePageKey as String: NSNumber(value: kHIDPage_GenericDesktop),
-                kIOHIDDeviceUsageKey as String: NSNumber(value: kHIDUsage_GD_Keyboard),
-            ],
-            [
-                kIOHIDDeviceUsagePageKey as String: NSNumber(value: kHIDPage_GenericDesktop),
-                kIOHIDDeviceUsageKey as String: NSNumber(value: kHIDUsage_GD_Keypad),
-            ],
-        ]
-        IOHIDManagerSetDeviceMatchingMultiple(mgr, match as CFArray)
-        let info = Unmanaged.passUnretained(self).toOpaque()
-        let hidCB: IOHIDValueCallback = { context, _, _, value in
-            guard let context else { return }
-            Unmanaged<Worker>.fromOpaque(context).takeUnretainedValue().hidValue(value)
-        }
-        IOHIDManagerRegisterInputValueCallback(mgr, hidCB, info)
-        IOHIDManagerScheduleWithRunLoop(mgr, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
-        if IOHIDManagerOpen(mgr, IOOptionBits(kIOHIDOptionsTypeNone)) != kIOReturnSuccess {
-            hid = nil
-        } else {
-            hid = mgr
-        }
     }
 
     private static func isKikiEye(_ a: NSRunningApplication?) -> Bool {
