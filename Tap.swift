@@ -26,6 +26,7 @@ private final class Worker {
     var stop = false
     var cmd = false
     var cmdTab = false
+    var winDown = false
     var hidden = false
     var quietUntil: UInt64 = 0
     var accDx: Int32 = 0
@@ -283,6 +284,7 @@ private final class Worker {
         on = enable
         cmd = false
         cmdTab = false
+        winDown = false
         lockPointer(enable)
         if !enable {
             releaseButtons()
@@ -344,9 +346,15 @@ private final class Worker {
             let kc = Int(ev.getIntegerValueField(.keyboardEventKeycode))
             if kc == 0x37 || kc == 0x36 {
                 if cmd && !cmdTab {
-                    sendKey(125, true, force: true)
+                    // wait for a letter (chord) or Command-up (tap)
                 } else {
-                    sendKey(125, false, force: true)
+                    if winDown {
+                        sendKey(125, false, force: true)
+                        winDown = false
+                    } else if !cmdTab {
+                        sendKey(125, true, force: true)
+                        sendKey(125, false, force: true)
+                    }
                     if cmdTab {
                         send([7])
                         releaseButtons()
@@ -365,9 +373,16 @@ private final class Worker {
             if kc == 0x37 || kc == 0x36 { return nil }
             if cmd && kc == 0x30 {
                 cmdTab = true
-                sendKey(125, false, force: true)
+                if winDown {
+                    sendKey(125, false, force: true)
+                    winDown = false
+                }
                 lockPointer(false)
                 return Unmanaged.passUnretained(ev)
+            }
+            if cmd && type == .keyDown && !winDown {
+                sendKey(125, true, force: true)
+                winDown = true
             }
             handleKey(kc, type == .keyDown, f)
             return nil
