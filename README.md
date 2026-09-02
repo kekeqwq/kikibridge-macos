@@ -1,4 +1,4 @@
-# KikiBridge 0.7.11（macOS sender）
+# KikiBridge 0.7.12（macOS sender）
 
 macOS 27 托盘管理器。真正抓键鼠的是同一条二进制的 `--tap` 子进程；管理器退出（含崩溃、强制退出）会带走它。
 
@@ -33,10 +33,12 @@ nix run  --option sandbox false
 
 桥启动时会：
 
-1. `karabiner_cli --set-variables '{"kikibridge":1}'`
-2. 把 `karabiner-kikibridge.json` 拷到 `~/.config/karabiner/assets/complex_modifications/kikibridge.json`
+1. 把规则写进 `~/.config/karabiner/karabiner.json`（当前 profile 最前面），Karabiner 自动重载
+2. `karabiner_cli --set-variables '{"kikibridge":1}'`
 
-**你需要在 Karabiner-Elements → Complex Modifications 里启用「KikiBridge: Command 只当 Command」并且拖到最上面。** 退出桥会把变量设回 0。
+第一次会备份 `karabiner.json.kikibridge.bak`。退出桥把变量设回 0。规则留着无妨（只有 `kikibridge=1` 才生效）。
+
+不要只拷 `assets/complex_modifications`：主界面是已启用列表，assets 只出现在 **Add predefined rule**。
 
 ## 用法
 

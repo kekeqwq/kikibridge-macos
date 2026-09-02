@@ -641,13 +641,57 @@ enum Karabiner {
     }
 
     static func installRule() {
-        let src = Bundle.main.path(forResource: "karabiner-kikibridge", ofType: "json")
-            ?? FileManager.default.currentDirectoryPath + "/karabiner-kikibridge.json"
-        let destDir = NSHomeDirectory() + "/.config/karabiner/assets/complex_modifications"
-        let dest = destDir + "/kikibridge.json"
-        try? FileManager.default.createDirectory(atPath: destDir, withIntermediateDirectories: true)
-        try? FileManager.default.removeItem(atPath: dest)
-        try? FileManager.default.copyItem(atPath: src, toPath: dest)
+        let manipulator: [String: Any] = [
+            "type": "basic",
+            "from": [
+                "key_code": "left_command",
+                "modifiers": ["optional": ["any"]],
+            ],
+            "to": [["key_code": "left_command"]],
+            "conditions": [[
+                "type": "variable_if",
+                "name": "kikibridge",
+                "value": 1,
+            ]],
+        ]
+        let manipulatorR: [String: Any] = [
+            "type": "basic",
+            "from": [
+                "key_code": "right_command",
+                "modifiers": ["optional": ["any"]],
+            ],
+            "to": [["key_code": "right_command"]],
+            "conditions": [[
+                "type": "variable_if",
+                "name": "kikibridge",
+                "value": 1,
+            ]],
+        ]
+        let rule: [String: Any] = [
+            "description": "KikiBridge: Command 只当 Command",
+            "manipulators": [manipulator, manipulatorR],
+        ]
+        let path = NSHomeDirectory() + "/.config/karabiner/karabiner.json"
+        let fm = FileManager.default
+        guard let data = fm.contents(atPath: path),
+              var root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var profiles = root["profiles"] as? [[String: Any]]
+        else { return }
+        var idx = profiles.firstIndex { ($0["selected"] as? Bool) == true } ?? 0
+        if idx < 0 || idx >= profiles.count { idx = 0 }
+        var profile = profiles[idx]
+        var cm = profile["complex_modifications"] as? [String: Any] ?? [:]
+        var rules = cm["rules"] as? [[String: Any]] ?? []
+        rules.removeAll { ($0["description"] as? String)?.hasPrefix("KikiBridge") == true }
+        rules.insert(rule, at: 0)
+        cm["rules"] = rules
+        profile["complex_modifications"] = cm
+        profiles[idx] = profile
+        root["profiles"] = profiles
+        guard let out = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted]) else { return }
+        let bak = path + ".kikibridge.bak"
+        if !fm.fileExists(atPath: bak) { try? fm.copyItem(atPath: path, toPath: bak) }
+        try? out.write(to: URL(fileURLWithPath: path))
     }
 }
 
