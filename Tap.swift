@@ -247,11 +247,13 @@ private final class Worker {
 
     private func mapKey(_ kc: Int) -> Int { (kc >= 0 && kc < 128) ? keyMap[kc] : 0 }
 
-    private func sendKey(_ code: Int, _ downNow: Bool) {
+    private func sendKey(_ code: Int, _ downNow: Bool, force: Bool = false) {
         if code <= 0 || code > 255 { return }
         let d: UInt8 = downNow ? 1 : 0
-        if downNow && down[code] != 0 { return }
-        if !downNow && down[code] == 0 { return }
+        if !force {
+            if downNow && down[code] != 0 { return }
+            if !downNow && down[code] == 0 { return }
+        }
         var b: [UInt8] = [6, 0, 0, d]
         let u = UInt16(code)
         b[1] = UInt8(u & 0xff); b[2] = UInt8(u >> 8)
@@ -344,21 +346,20 @@ private final class Worker {
             releaseKeys()
             if on { lockPointer(true) }
         } else if winSent {
-            sendKey(125, false)
+            sendKey(125, false, force: true)
             winSent = false
             winHold = false
         } else {
             winHold = true
-            sendKey(125, true)
+            sendKey(125, true, force: true)
             winGen += 1
             let gen = winGen
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                guard let self, gen == self.winGen else { return }
-                self.sendKey(125, false)
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) { [weak self] in
-                guard let self, gen == self.winGen else { return }
-                self.winHold = false
+            for delay in [0.06, 0.14, 0.28] as [Double] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                    guard let self, gen == self.winGen else { return }
+                    self.sendKey(125, false, force: true)
+                    if delay >= 0.28 { self.winHold = false }
+                }
             }
         }
         cmdTab = false
@@ -401,7 +402,6 @@ private final class Worker {
             }
             if cmd {
                 if kc == 0x36 || kc == 0x37 { return nil }
-                if kc == 0x2F || kc == 0x29 { return nil }
                 if type == .keyDown && !winSent {
                     sendKey(125, true)
                     winSent = true
@@ -499,7 +499,8 @@ private final class Worker {
         if usage >= 0xE0 && usage <= 0xE7 { return }
         let evdev = hidMap[Int(usage)]
         if evdev == 0 { return }
-        if cmd || winHold { return }
+        if cmdTab || cmd || winHold { return }
+        if (down[125] != 0 || down[126] != 0) && (evdev == 52 || evdev == 39) { return }
         sendKey(evdev, v != 0)
     }
 
