@@ -66,7 +66,7 @@ private final class Worker {
         km[0x2D]=49; km[0x2E]=50; km[0x2F]=52
         km[0x30]=15; km[0x31]=57; km[0x32]=41; km[0x33]=14
         km[0x35]=1
-        km[0x36]=126; km[0x37]=125; km[0x38]=42; km[0x39]=58
+        km[0x38]=42; km[0x39]=58
         km[0x3A]=56;  km[0x3B]=29;  km[0x3C]=54;  km[0x3D]=100
         km[0x3E]=97
         km[0x41]=83; km[0x43]=55; km[0x45]=78; km[0x47]=69
@@ -113,8 +113,6 @@ private final class Worker {
         hm[0x5D]=76; hm[0x5E]=77; hm[0x5F]=79; hm[0x60]=80
         hm[0x61]=81; hm[0x62]=82; hm[0x63]=83
         hm[0x65]=127
-        hm[0xE0]=29; hm[0xE1]=42; hm[0xE2]=56; hm[0xE3]=125
-        hm[0xE4]=97; hm[0xE5]=54; hm[0xE6]=100; hm[0xE7]=126
         hidMap = hm
     }
 
@@ -391,6 +389,7 @@ private final class Worker {
         }
         if type == .keyDown || type == .keyUp {
             let kc = Int(ev.getIntegerValueField(.keyboardEventKeycode))
+            if kc == 0x37 || kc == 0x36 { return nil }
             if cmd && kc == 0x30 {
                 cmdTab = true
                 if winSent {
@@ -401,7 +400,6 @@ private final class Worker {
                 return Unmanaged.passUnretained(ev)
             }
             if cmd {
-                if kc == 0x36 || kc == 0x37 { return nil }
                 if type == .keyDown && !winSent {
                     sendKey(125, true)
                     winSent = true
@@ -499,8 +497,8 @@ private final class Worker {
         if usage >= 0xE0 && usage <= 0xE7 { return }
         let evdev = hidMap[Int(usage)]
         if evdev == 0 { return }
+        if evdev == 125 || evdev == 126 { return }
         if cmdTab || cmd || winHold { return }
-        if (down[125] != 0 || down[126] != 0) && (evdev == 52 || evdev == 39) { return }
         sendKey(evdev, v != 0)
     }
 
