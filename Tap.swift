@@ -27,6 +27,8 @@ private final class Worker {
     var cmdHeld = false
     var cmdTab = false
     var winDown = false
+    var lastOther: pid_t = 0
+    var escaping = false
     var hidden = false
     var quietUntil: UInt64 = 0
     var accDx: Int32 = 0
@@ -174,7 +176,12 @@ private final class Worker {
         watchParent()
         let apply = { [weak self] in
             guard let self, !self.stop else { return }
-            self.setBridged(Self.isKikiEye(NSWorkspace.shared.frontmostApplication))
+            let front = NSWorkspace.shared.frontmostApplication
+            if let f = front, f.processIdentifier != getpid(), f.activationPolicy == .regular, !Self.isKikiEye(f) {
+                self.lastOther = f.processIdentifier
+            }
+            if self.escaping { return }
+            self.setBridged(Self.isKikiEye(front))
         }
         let nc = NSWorkspace.shared.notificationCenter
         nc.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { _ in apply() }
@@ -331,15 +338,38 @@ private final class Worker {
         sendKey(mapKey(kc), isDown)
     }
 
-    private var mouseQuiet: Bool { cmdTab }
+    private var mouseQuiet: Bool { cmdTab || escaping }
 
-    private let kInject: Int64 = 0x4B425443
-
-    private func postLocalKey(_ vk: CGKeyCode, _ down: Bool) {
-        guard let src = CGEventSource(stateID: .hidSystemState) else { return }
-        guard let e = CGEvent(keyboardEventSource: src, virtualKey: vk, keyDown: down) else { return }
-        e.setIntegerValueField(.eventSourceUserData, value: kInject)
-        e.post(tap: .cgAnnotatedSessionEventTap)
+    private func jumpOut() {
+        if escaping { return }
+        escaping = true
+        cmdTab = true
+        if winDown {
+            sendKey(125, false, force: true)
+            winDown = false
+        }
+        send([7])
+        releaseButtons()
+        releaseKeys()
+        setBridged(false)
+        let pid = lastOther
+        DispatchQueue.main.async {
+            if pid > 0, let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated {
+                app.activate()
+            } else {
+                for a in NSWorkspace.shared.runningApplications where a.activationPolicy == .regular {
+                    if a.processIdentifier != getpid() && !Self.isKikiEye(a) {
+                        a.activate()
+                        break
+                    }
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self else { return }
+                self.escaping = false
+                self.cmdTab = false
+            }
+        }
     }
 
     private func commandBegin() {
@@ -357,7 +387,6 @@ private final class Worker {
             send([7])
             releaseButtons()
             releaseKeys()
-            if on { lockPointer(true) }
             cmdTab = false
             return
         }
@@ -378,9 +407,6 @@ private final class Worker {
             if let t = keyTap { CGEvent.tapEnable(tap: t, enable: true) }
             return Unmanaged.passUnretained(ev)
         }
-        if ev.getIntegerValueField(.eventSourceUserData) == kInject {
-            return Unmanaged.passUnretained(ev)
-        }
         if !on { return Unmanaged.passUnretained(ev) }
         let f = ev.flags
         if type == .flagsChanged {
@@ -390,7 +416,6 @@ private final class Worker {
                 else { commandEnd() }
                 return nil
             }
-            if cmdTab { return Unmanaged.passUnretained(ev) }
             handleFlags(kc, f)
             return nil
         }
@@ -401,25 +426,9 @@ private final class Worker {
                 else { commandEnd() }
                 return nil
             }
-            if cmdTab { return Unmanaged.passUnretained(ev) }
             if (cmdHeld || f.contains(.maskCommand)) && kc == 0x30 {
-                cmdTab = true
-                if winDown {
-                    sendKey(125, false, force: true)
-                    winDown = false
-                }
-                send([7])
-                releaseButtons()
-                releaseKeys()
-                lockPointer(false)
-                if type == .keyDown {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                        guard let self, self.cmdTab else { return }
-                        self.postLocalKey(0x24, true)
-                        self.postLocalKey(0x24, false)
-                    }
-                }
-                return Unmanaged.passUnretained(ev)
+                if type == .keyDown { jumpOut() }
+                return nil
             }
             if (cmdHeld || f.contains(.maskCommand)) && type == .keyDown && !winDown && !cmdTab {
                 sendKey(125, true, force: true)

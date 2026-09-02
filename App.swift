@@ -160,14 +160,20 @@ struct AboutView: View {
             Text("版本 \(kVersion)")
                 .font(.callout)
                 .foregroundStyle(.secondary)
-            Text("管理器。真正抓键鼠的是子进程（同一条二进制 --tap），随本程序退出（含崩溃/强制退出）。\nKikiEye 前台时透传到 deck / pc / surface。\n\n更新日期  \(kUpdated)\n许可证  GPL-3.0-or-later\nCopyright © 2026 KikiBridge contributors")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 340)
+            VStack(spacing: 6) {
+                Text("管理器。抓键鼠的是 --tap 子进程，退出即带走。")
+                Text("KikiEye 在前台时透传到 deck / pc / surface。")
+                Text("更新日期 \(kUpdated)  ·  GPL-3.0-or-later")
+                Text("Copyright © 2026 KikiBridge contributors")
+            }
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: 360)
         }
         .padding(32)
-        .frame(width: 420)
+        .frame(minWidth: 420, minHeight: 320)
         .containerBackground(.regularMaterial, for: .window)
         .onAppear {
             NSApp.windows.filter { $0.identifier?.rawValue == "about" }.forEach(kbApplyGlass)
