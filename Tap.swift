@@ -24,7 +24,7 @@ enum Tap {
 private final class Worker {
     var on = false
     var stop = false
-    var cmd = false
+    var cmdHeld = false
     var cmdTab = false
     var winDown = false
     var hidden = false
@@ -282,7 +282,7 @@ private final class Worker {
     private func setBridged(_ enable: Bool) {
         if enable == on { return }
         on = enable
-        cmd = false
+        cmdHeld = false
         cmdTab = false
         winDown = false
         lockPointer(enable)
@@ -332,6 +332,37 @@ private final class Worker {
 
     private var mouseQuiet: Bool { cmdTab }
 
+    private func commandBegin() {
+        if cmdHeld { return }
+        cmdHeld = true
+        cmdTab = false
+        winDown = false
+    }
+
+    private func commandEnd() {
+        if !cmdHeld && !winDown { return }
+        cmdHeld = false
+        if cmdTab {
+            winDown = false
+            send([7])
+            releaseButtons()
+            releaseKeys()
+            if on { lockPointer(true) }
+            cmdTab = false
+            return
+        }
+        if winDown {
+            sendKey(125, false, force: true)
+        } else {
+            sendKey(125, true, force: true)
+            sendKey(125, false, force: true)
+        }
+        winDown = false
+        send([7])
+        releaseButtons()
+        releaseKeys()
+    }
+
     private func keyEvent(_ type: CGEventType, _ ev: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let t = keyTap { CGEvent.tapEnable(tap: t, enable: true) }
@@ -339,28 +370,11 @@ private final class Worker {
         }
         if !on { return Unmanaged.passUnretained(ev) }
         let f = ev.flags
-        let cmdNow = f.contains(.maskCommand)
-        if cmdNow && !cmd { cmdTab = false }
-        cmd = cmdNow
         if type == .flagsChanged {
             let kc = Int(ev.getIntegerValueField(.keyboardEventKeycode))
             if kc == 0x37 || kc == 0x36 {
-                if cmd && !cmdTab {
-                    // wait for a letter (chord) or Command-up (tap)
-                } else {
-                    if winDown {
-                        sendKey(125, false, force: true)
-                    } else if !cmdTab {
-                        sendKey(125, true, force: true)
-                        sendKey(125, false, force: true)
-                    }
-                    winDown = false
-                    send([7])
-                    releaseButtons()
-                    releaseKeys()
-                    if cmdTab && on { lockPointer(true) }
-                    cmdTab = false
-                }
+                if f.contains(.maskCommand) { commandBegin() }
+                else { commandEnd() }
                 return Unmanaged.passUnretained(ev)
             }
             handleFlags(kc, f)
@@ -368,8 +382,12 @@ private final class Worker {
         }
         if type == .keyDown || type == .keyUp {
             let kc = Int(ev.getIntegerValueField(.keyboardEventKeycode))
-            if kc == 0x37 || kc == 0x36 { return nil }
-            if cmd && kc == 0x30 {
+            if kc == 0x37 || kc == 0x36 {
+                if type == .keyDown { commandBegin() }
+                else { commandEnd() }
+                return nil
+            }
+            if (cmdHeld || f.contains(.maskCommand)) && kc == 0x30 {
                 cmdTab = true
                 if winDown {
                     sendKey(125, false, force: true)
@@ -378,7 +396,7 @@ private final class Worker {
                 lockPointer(false)
                 return Unmanaged.passUnretained(ev)
             }
-            if cmd && type == .keyDown && !winDown {
+            if (cmdHeld || f.contains(.maskCommand)) && type == .keyDown && !winDown && !cmdTab {
                 sendKey(125, true, force: true)
                 winDown = true
             }

@@ -1,5 +1,5 @@
 {
-  description = "KikiBridge macOS sender — Swift 0.7.9, Xcode 27 SDK";
+  description = "KikiBridge macOS sender — Swift 0.7.10, Xcode 27 SDK";
 
   nixConfig = {
     sandbox = false;
@@ -30,7 +30,7 @@
           triple = if system == "aarch64-darwin" then "arm64-apple-macos27.0" else "x86_64-apple-macos27.0";
           pkg = pkgs.stdenv.mkDerivation {
             pname = "kikibridge";
-            version = "0.7.9";
+            version = "0.7.10";
             src = lib.cleanSource ./.;
             nativeBuildInputs = [ pkgs.actool ];
             # Do not set __impureHostDeps — nix rejects /usr/bin/clang.
