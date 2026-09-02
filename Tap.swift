@@ -273,7 +273,8 @@ private final class Worker {
     private func sendBtn(_ b: Int, _ downNow: Bool, _ clicks: Int64) {
         if b < 1 || b > 3 { return }
         let d: UInt8 = downNow ? 1 : 0
-        let c: UInt8 = clicks < 1 ? 1 : UInt8(min(clicks, 8))
+        if d == 0 && btn[b] == 0 { return }
+        let c: UInt8 = UInt8(min(max(clicks, 0), 8))
         let pkt: [UInt8] = [4, UInt8(b), d, c]
         send(pkt)
         btn[b] = d
@@ -283,7 +284,7 @@ private final class Worker {
     }
 
     private func releaseButtons() {
-        for b in 1...3 { sendBtn(b, false, 1) }
+        for b in 1...3 where btn[b] != 0 { sendBtn(b, false, 0) }
     }
 
     private func setBridged(_ enable: Bool) {
@@ -348,9 +349,6 @@ private final class Worker {
             sendKey(125, false, force: true)
             winDown = false
         }
-        send([7])
-        releaseButtons()
-        releaseKeys()
         setBridged(false)
         let pid = lastOther
         DispatchQueue.main.async {
