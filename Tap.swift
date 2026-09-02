@@ -28,6 +28,7 @@ private final class Worker {
     var cmdTab = false
     var hidden = false
     var winHold = false
+    var winSent = false
     var winGen = 0
     var quietUntil: UInt64 = 0
     var accDx: Int32 = 0
@@ -254,7 +255,7 @@ private final class Worker {
         var b: [UInt8] = [6, 0, 0, d]
         let u = UInt16(code)
         b[1] = UInt8(u & 0xff); b[2] = UInt8(u >> 8)
-        let times = (downNow || code == 125 || code == 126) ? 1 : 3
+        let times = downNow ? 1 : 3
         for _ in 0..<times { send(b) }
         down[code] = d
     }
@@ -286,6 +287,7 @@ private final class Worker {
         cmd = false
         cmdTab = false
         winHold = false
+        winSent = false
         lockPointer(enable)
         if !enable {
             releaseButtons()
@@ -331,29 +333,37 @@ private final class Worker {
         sendKey(mapKey(kc), isDown)
     }
 
-    private var mouseQuiet: Bool { cmd || winHold }
+    private var mouseQuiet: Bool { cmdTab }
 
     private func commandUp() {
-        if !cmdTab {
-            winHold = true
-            if down[125] != 0 { sendKey(125, false) }
-            sendKey(125, true)
-            winGen += 1
-            let gen = winGen
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-                guard let self, gen == self.winGen else { return }
-                self.sendKey(125, false)
-                self.winHold = false
-            }
-        } else {
+        if cmdTab {
             winHold = false
+            winSent = false
             send([7])
             releaseButtons()
             releaseKeys()
             if on { lockPointer(true) }
+        } else if winSent {
+            sendKey(125, false)
+            winSent = false
+            winHold = false
+        } else {
+            winHold = true
+            sendKey(125, true)
+            winGen += 1
+            let gen = winGen
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                guard let self, gen == self.winGen else { return }
+                self.sendKey(125, false)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) { [weak self] in
+                guard let self, gen == self.winGen else { return }
+                self.winHold = false
+            }
         }
         cmdTab = false
         cmd = false
+        winSent = false
     }
 
     private func keyEvent(_ type: CGEventType, _ ev: CGEvent) -> Unmanaged<CGEvent>? {
@@ -364,7 +374,10 @@ private final class Worker {
         if !on { return Unmanaged.passUnretained(ev) }
         let f = ev.flags
         let cmdNow = f.contains(.maskCommand)
-        if cmdNow && !cmd { cmdTab = false }
+        if cmdNow && !cmd {
+            cmdTab = false
+            winSent = false
+        }
         cmd = cmdNow
         if type == .flagsChanged {
             let kc = Int(ev.getIntegerValueField(.keyboardEventKeycode))
@@ -379,10 +392,24 @@ private final class Worker {
             let kc = Int(ev.getIntegerValueField(.keyboardEventKeycode))
             if cmd && kc == 0x30 {
                 cmdTab = true
+                if winSent {
+                    sendKey(125, false)
+                    winSent = false
+                }
                 lockPointer(false)
                 return Unmanaged.passUnretained(ev)
             }
-            if cmd { return nil }
+            if cmd {
+                if kc == 0x36 || kc == 0x37 { return nil }
+                if kc == 0x2F || kc == 0x29 { return nil }
+                if type == .keyDown && !winSent {
+                    sendKey(125, true)
+                    winSent = true
+                    winGen += 1
+                }
+                handleKey(kc, type == .keyDown, f)
+                return nil
+            }
             handleKey(kc, type == .keyDown, f)
             return nil
         }
