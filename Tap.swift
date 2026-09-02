@@ -342,7 +342,7 @@ private final class Worker {
         guard let src = CGEventSource(stateID: .hidSystemState) else { return }
         guard let e = CGEvent(keyboardEventSource: src, virtualKey: 0x37, keyDown: down) else { return }
         e.flags = down ? .maskCommand : []
-        e.setIntegerValueField(.eventSourceUserData, kInject)
+        e.setIntegerValueField(.eventSourceUserData, value: kInject)
         e.post(tap: .cgAnnotatedSessionEventTap)
         localCmd = down
     }
