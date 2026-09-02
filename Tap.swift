@@ -286,6 +286,7 @@ private final class Worker {
         cmdTab = false
         winDown = false
         lockPointer(enable)
+        Karabiner.set(enable, wait: !enable)
         if !enable {
             releaseButtons()
             releaseKeys()
@@ -375,7 +376,8 @@ private final class Worker {
             if kc == 0x37 || kc == 0x36 {
                 if f.contains(.maskCommand) { commandBegin() }
                 else { commandEnd() }
-                return Unmanaged.passUnretained(ev)
+                if cmdTab { return Unmanaged.passUnretained(ev) }
+                return nil
             }
             handleFlags(kc, f)
             return nil
@@ -385,6 +387,7 @@ private final class Worker {
             if kc == 0x37 || kc == 0x36 {
                 if type == .keyDown { commandBegin() }
                 else { commandEnd() }
+                if cmdTab { return Unmanaged.passUnretained(ev) }
                 return nil
             }
             if (cmdHeld || f.contains(.maskCommand)) && kc == 0x30 {
@@ -615,6 +618,7 @@ enum Pointer {
 
 enum Karabiner {
     static func set(_ on: Bool, wait: Bool) {
+        if on { installRule() }
         let bins = [
             "/Library/Application Support/org.pqrs/Karabiner-Elements/bin/karabiner_cli",
             "/Applications/Karabiner-Elements.app/Contents/MacOS/karabiner_cli",
@@ -634,6 +638,16 @@ enum Karabiner {
             if wait { _ = waitpid(pid, nil, 0) }
             break
         }
+    }
+
+    static func installRule() {
+        let src = Bundle.main.path(forResource: "karabiner-kikibridge", ofType: "json")
+            ?? FileManager.default.currentDirectoryPath + "/karabiner-kikibridge.json"
+        let destDir = NSHomeDirectory() + "/.config/karabiner/assets/complex_modifications"
+        let dest = destDir + "/kikibridge.json"
+        try? FileManager.default.createDirectory(atPath: destDir, withIntermediateDirectories: true)
+        try? FileManager.default.removeItem(atPath: dest)
+        try? FileManager.default.copyItem(atPath: src, toPath: dest)
     }
 }
 

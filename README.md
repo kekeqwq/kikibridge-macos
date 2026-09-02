@@ -1,4 +1,4 @@
-# KikiBridge 0.7.10（macOS sender）
+# KikiBridge 0.7.11（macOS sender）
 
 macOS 27 托盘管理器。真正抓键鼠的是同一条二进制的 `--tap` 子进程；管理器退出（含崩溃、强制退出）会带走它。
 
@@ -26,6 +26,17 @@ nix run  --option sandbox false
 - **输入监控**
 
 勾选 **KikiBridge**。若从终端 `nix run`，同时勾选终端。
+
+## Karabiner
+
+你一直开着 Karabiner。Command 的 **to_if_alone**（点一下变成空格/句号）发生在我们的钩子之前，所以怎么改 `Tap.swift` 的 Cmd 映射都没差。
+
+桥启动时会：
+
+1. `karabiner_cli --set-variables '{"kikibridge":1}'`
+2. 把 `karabiner-kikibridge.json` 拷到 `~/.config/karabiner/assets/complex_modifications/kikibridge.json`
+
+**你需要在 Karabiner-Elements → Complex Modifications 里启用「KikiBridge: Command 只当 Command」并且拖到最上面。** 退出桥会把变量设回 0。
 
 ## 用法
 
