@@ -350,17 +350,15 @@ private final class Worker {
                 } else {
                     if winDown {
                         sendKey(125, false, force: true)
-                        winDown = false
                     } else if !cmdTab {
                         sendKey(125, true, force: true)
                         sendKey(125, false, force: true)
                     }
-                    if cmdTab {
-                        send([7])
-                        releaseButtons()
-                        releaseKeys()
-                        if on { lockPointer(true) }
-                    }
+                    winDown = false
+                    send([7])
+                    releaseButtons()
+                    releaseKeys()
+                    if cmdTab && on { lockPointer(true) }
                     cmdTab = false
                 }
                 return Unmanaged.passUnretained(ev)
