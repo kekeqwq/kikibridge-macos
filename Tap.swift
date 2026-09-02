@@ -278,9 +278,13 @@ private final class Worker {
         let pkt: [UInt8] = [4, UInt8(b), d, c]
         send(pkt)
         btn[b] = d
-        quietUntil = DispatchTime.now().uptimeNanoseconds + 500_000_000
         accDx = 0
         accDy = 0
+        if d == 0 {
+            quietUntil = DispatchTime.now().uptimeNanoseconds + 400_000_000
+        } else {
+            quietUntil = 0
+        }
     }
 
     private func releaseButtons() {
@@ -450,19 +454,9 @@ private final class Worker {
             var dx = Int32(ev.getIntegerValueField(.mouseEventDeltaX))
             var dy = Int32(ev.getIntegerValueField(.mouseEventDeltaY))
             if dx != 0 || dy != 0 {
-                let held = btn[1] != 0 || btn[2] != 0 || btn[3] != 0
                 let t = DispatchTime.now().uptimeNanoseconds
-                if t < quietUntil || held {
-                    accDx += dx
-                    accDy += dy
-                    if !held || abs(accDx) + abs(accDy) < 48 {
-                        return Unmanaged.passUnretained(ev)
-                    }
-                    dx = accDx
-                    dy = accDy
-                    accDx = 0
-                    accDy = 0
-                    quietUntil = 0
+                if t < quietUntil {
+                    return Unmanaged.passUnretained(ev)
                 }
                 var b = [UInt8](repeating: 0, count: 9)
                 b[0] = 3
