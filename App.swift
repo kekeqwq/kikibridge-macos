@@ -62,16 +62,20 @@ final class Polisher: NSView {
     func polish() {
         guard let host = superview else { return }
         func walk(_ v: NSView) {
+            if v is NSTextField || v is NSTextView { return }
             v.focusRingType = .none
-            if let c = v as? NSControl {
+            if let c = v as? NSControl, !(c is NSTextField) {
                 c.refusesFirstResponder = true
                 c.focusRingType = .none
             }
             for c in v.subviews { walk(c) }
         }
         walk(host)
-        if let win = window, win.firstResponder is NSControl {
-            win.makeFirstResponder(nil)
+        if let win = window {
+            if win.firstResponder is NSTextView || win.firstResponder is NSTextField { return }
+            if win.firstResponder is NSControl {
+                win.makeFirstResponder(nil)
+            }
         }
     }
 }
@@ -100,10 +104,11 @@ struct PanelView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
 
-            Picker("", selection: $bridge.host) {
+            Picker("", selection: $bridge.pick) {
                 Text("deck").tag("deck")
                 Text("pc").tag("pc")
                 Text("surface").tag("surface")
+                Text("自定义").tag("custom")
             }
             .pickerStyle(.tabs)
             .controlSize(.extraLarge)
@@ -112,8 +117,21 @@ struct PanelView: View {
             .focusEffectDisabled()
             .fixedSize()
             .background { TabPolish() }
-            .onChange(of: bridge.host) { _, _ in
+            .onChange(of: bridge.pick) { _, _ in
                 bridge.hostChanged()
+            }
+
+            if bridge.pick == "custom" {
+                TextField("主机名", text: $bridge.custom)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.large)
+                    .font(.body)
+                    .frame(width: 240)
+                    .disabled(bridge.running)
+                    .onSubmit { bridge.hostChanged() }
+                    .onChange(of: bridge.custom) { _, _ in
+                        UserDefaults.standard.set(bridge.custom, forKey: "customHost")
+                    }
             }
 
             Button {
@@ -162,7 +180,7 @@ struct AboutView: View {
                 .foregroundStyle(.secondary)
             VStack(spacing: 6) {
                 Text("管理器。抓键鼠的是 --tap 子进程，退出即带走。")
-                Text("KikiEye 在前台时透传到 deck / pc / surface。")
+                Text("KikiEye 在前台时透传到所选主机。")
                 Text("更新日期 \(kUpdated)  ·  GPL-3.0-or-later")
                 Text("Copyright © 2026 KikiBridge contributors")
             }

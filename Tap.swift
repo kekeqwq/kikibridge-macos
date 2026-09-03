@@ -611,6 +611,11 @@ private final class Worker {
         if sock >= 0 { _ = close(sock); sock = -1 }
         if guardFd >= 0 { _ = close(guardFd); guardFd = -1 }
         postState("dead")
+        if lostPeer {
+            Pointer.reset()
+            Karabiner.set(false, wait: false)
+            _exit(8)
+        }
         NSApp.stop(nil)
         CFRunLoopStop(CFRunLoopGetMain())
     }

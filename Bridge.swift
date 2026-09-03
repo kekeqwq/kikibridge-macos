@@ -4,7 +4,7 @@ import Darwin
 import Foundation
 import MachO
 
-let kVersion = "0.7.23"
+let kVersion = "0.7.24"
 let kUpdated = "2026-09-02"
 let kPort: UInt16 = 5000
 
@@ -180,6 +180,8 @@ func waitExitCode(_ st: Int32) -> Int32 {
 @MainActor
 final class Bridge: ObservableObject {
     @Published var host: String
+    @Published var pick: String
+    @Published var custom: String
     @Published var running = false
     @Published var status = "已停止"
     @Published var goTitle = "启动"
@@ -190,9 +192,24 @@ final class Bridge: ObservableObject {
     private var child: pid_t = 0
     private var guardWr: Int32 = -1
     private var childSrc: DispatchSourceProcess?
+    private var pingSrc: DispatchSourceTimer?
+    private var pingFd: Int32 = -1
+    private var pingAddr = sockaddr_in()
+    private var pingLast: UInt64 = 0
+    private var lostTold = false
 
     init() {
-        host = UserDefaults.standard.string(forKey: "host") ?? "deck"
+        let h = UserDefaults.standard.string(forKey: "host") ?? "deck"
+        let c = UserDefaults.standard.string(forKey: "customHost") ?? ""
+        custom = c
+        if ["deck", "pc", "surface"].contains(h) {
+            pick = h
+            host = h
+        } else {
+            pick = "custom"
+            host = h
+            if custom.isEmpty { custom = h }
+        }
         Pointer.reset()
         DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name(Tap.note), object: nil, queue: .main
@@ -201,16 +218,38 @@ final class Bridge: ObservableObject {
         }
     }
 
+    func targetHost() -> String {
+        if pick == "custom" {
+            return custom.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return pick
+    }
+
     func hostChanged() {
+        let t = targetHost()
+        if !t.isEmpty { host = t }
         UserDefaults.standard.set(host, forKey: "host")
-        if running { stop(); start() }
+        UserDefaults.standard.set(pick, forKey: "hostPick")
+        UserDefaults.standard.set(custom, forKey: "customHost")
+        if running {
+            if targetHost().isEmpty { return }
+            stop()
+            start()
+        }
     }
 
     func toggle() { running ? stop() : start() }
 
     func start() {
         if child != 0 { return }
-        let p = probeHost(host)
+        let name = targetHost()
+        if name.isEmpty {
+            alert("没有主机名", "自定义里填对端主机名，再点启动。")
+            return
+        }
+        host = name
+        lostTold = false
+        let p = probeHost(name)
         if let err = p.error {
             alert("对端不通，未启动桥", err)
             return
@@ -262,6 +301,7 @@ final class Bridge: ObservableObject {
             child = s.pid
             tapState = "wait"
             watch(s.pid)
+            startPing(ip)
             paint()
         } catch {
             alert("无法启动桥", "\(error)")
@@ -269,6 +309,7 @@ final class Bridge: ObservableObject {
     }
 
     func stop() {
+        stopPing()
         let pid = child
         let wr = guardWr
         guardWr = -1
@@ -297,6 +338,7 @@ final class Bridge: ObservableObject {
     private func childExited(_ st: Int32) {
         childSrc?.cancel()
         childSrc = nil
+        stopPing()
         child = 0
         if guardWr >= 0 { _ = close(guardWr); guardWr = -1 }
         tapState = nil
@@ -306,7 +348,7 @@ final class Bridge: ObservableObject {
         let code = waitExitCode(st)
         if code == 0 || code == 128 + SIGTERM { return }
         if code == 8 {
-            alert("对端离线，已停止", "\(host) 没有回应。开机完成后再点启动。")
+            peerGone()
             return
         }
         var msg = "桥意外退出"
@@ -322,9 +364,72 @@ final class Bridge: ObservableObject {
         guard let info = n.userInfo else { return }
         let s = info["s"] as? String
         if s == "dead" { return }
+        if s == "lost" {
+            peerGone()
+            return
+        }
         tapState = s
         if let f = info["front"] as? String { front = f }
         paint()
+    }
+
+    private func peerGone() {
+        if lostTold && child == 0 { return }
+        lostTold = true
+        stop()
+        alert("对端离线，已停止", "\(host) 没有回应。开机完成后再点启动。")
+    }
+
+    private func startPing(_ ip: String) {
+        stopPing()
+        let fd = socket(AF_INET, SOCK_DGRAM, 0)
+        if fd < 0 { return }
+        _ = fcntl(fd, F_SETFL, O_NONBLOCK)
+        var addr = sockaddr_in()
+        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = in_port_t(UInt16(kPort).bigEndian)
+        _ = ip.withCString { inet_pton(AF_INET, $0, &addr.sin_addr) }
+        pingAddr = addr
+        pingFd = fd
+        pingLast = DispatchTime.now().uptimeNanoseconds
+        let t = DispatchSource.makeTimerSource(queue: .main)
+        t.schedule(deadline: .now() + .milliseconds(400), repeating: 1, leeway: .milliseconds(50))
+        t.setEventHandler { [weak self] in self?.pingTick() }
+        t.resume()
+        pingSrc = t
+    }
+
+    private func pingTick() {
+        if child == 0 || pingFd < 0 { return }
+        var one: UInt8 = 1
+        _ = withUnsafePointer(to: &pingAddr) { ap in
+            ap.withMemoryRebound(to: sockaddr.self, capacity: 1) { sp in
+                sendto(self.pingFd, &one, 1, 0, sp, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        var buf: UInt8 = 0
+        var from = sockaddr_in()
+        var flen = socklen_t(MemoryLayout<sockaddr_in>.size)
+        while true {
+            let n = withUnsafeMutablePointer(to: &from) { fp in
+                fp.withMemoryRebound(to: sockaddr.self, capacity: 1) { sp in
+                    recvfrom(self.pingFd, &buf, 1, MSG_DONTWAIT, sp, &flen)
+                }
+            }
+            if n <= 0 { break }
+            if buf == 2 { pingLast = DispatchTime.now().uptimeNanoseconds }
+        }
+        let age = DispatchTime.now().uptimeNanoseconds &- pingLast
+        if age > 3_000_000_000 {
+            peerGone()
+        }
+    }
+
+    private func stopPing() {
+        pingSrc?.cancel()
+        pingSrc = nil
+        if pingFd >= 0 { _ = close(pingFd); pingFd = -1 }
     }
 
     private func paint() {
