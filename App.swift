@@ -9,6 +9,17 @@ func kbApplyGlass(_ w: NSWindow) {
     w.isOpaque = false
 }
 
+func kbAppIcon() -> NSImage {
+    if let i = NSImage(named: "AppIcon") { return i }
+    return NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
+}
+
+func kbShowInDock() {
+    NSApp.applicationIconImage = kbAppIcon()
+    NSApp.setActivationPolicy(.regular)
+    NSApp.activate()
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let bridge = Bridge()
@@ -91,13 +102,11 @@ struct PanelView: View {
 
     var body: some View {
         VStack(spacing: 22) {
-            if let img = bundleImage("kikibridge") {
-                Image(nsImage: img)
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFit()
-                    .frame(width: 380, height: 190)
-            }
+            Image(nsImage: kbAppIcon())
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: 128, height: 128)
             Text("点选对端，再开桥。⌘Tab 切走即回本机。退出本程序会关掉桥。")
                 .font(.body)
                 .foregroundStyle(.secondary)
@@ -167,13 +176,11 @@ struct PanelView: View {
 struct AboutView: View {
     var body: some View {
         VStack(spacing: 12) {
-            if let img = bundleImage("girl") ?? bundleImage("icon") {
-                Image(nsImage: img)
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFit()
-                    .frame(width: 128, height: 128)
-            }
+            Image(nsImage: kbAppIcon())
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: 128, height: 128)
             Text("KikiBridge").font(.title2).fontWeight(.semibold)
             Text("版本 \(kVersion)")
                 .font(.callout)
@@ -225,14 +232,12 @@ struct TrayLabel: View {
 
     private func openPanel() {
         openWindow(id: "panel")
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate()
+        kbShowInDock()
     }
 
     private func openAbout() {
         openWindow(id: "about")
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate()
+        kbShowInDock()
     }
 
     private func templated(_ img: NSImage) -> NSImage {
@@ -263,14 +268,12 @@ struct TrayMenu: View {
 
     private func openPanel() {
         openWindow(id: "panel")
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate()
+        kbShowInDock()
     }
 
     private func openAbout() {
         openWindow(id: "about")
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate()
+        kbShowInDock()
     }
 }
 

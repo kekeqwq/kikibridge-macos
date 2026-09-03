@@ -1,4 +1,4 @@
-# KikiBridge 0.7.24（macOS sender）
+# KikiBridge 0.7.25（macOS sender）
 
 macOS 27 托盘管理器。真正抓键鼠的是同一条二进制的 `--tap` 子进程；管理器退出（含崩溃、强制退出）会带走它。
 
@@ -61,19 +61,15 @@ nix run  --option sandbox false
 
 ## 用法
 
-1. 点选对端主机名：**deck** / **pc** / **surface**
-2. 点 **启动**
-3. 焦点在 **KikiEye** 上时，键鼠透传到对端（UDP 5000）
-4. **⌘Tab** 留在本机，切走 KikiEye 即回本机
+1. 点选对端：**deck** / **pc** / **surface** / **自定义**（系统输入框填主机名）
+2. 点 **启动**（对端 UDP 5000 必须先回 pong，否则不启动）
+3. 焦点在 **KikiEye** 上时，键鼠透传
+4. **⌘Tab** 留在本机；对端关机约 3 秒自动停桥
 5. 退出本程序即关桥
 
-## 界面（系统 API，不手绘）
+## 界面
 
-- `Picker` + `.pickerStyle(.tabs)` — Clock 那种玻璃 Tab
-- `Button` + `.buttonStyle(.glass)` + `.buttonBorderShape(.capsule)`
-- `MenuBarExtra` 托盘（白色剪影）
-- `Window` hidden titlebar，系统铺液态玻璃
-- Dock 图标：系统着色的指路小人（`.icon` / Assets.car）
+Dock / 面板 / 关于：`AppIcon.icon` → Assets.car（系统液态玻璃）。托盘：`kikibridge-template.png` 白色剪影。
 
 ## 源码
 
@@ -81,9 +77,11 @@ nix run  --option sandbox false
 |---|---|
 | `Entry.swift` | `@main`，`--tap` / `--unlock`，单例 |
 | `App.swift` | SwiftUI 面板 / 关于 / 托盘 |
-| `Bridge.swift` | 探测对端、拉起/杀掉 tap |
+| `Bridge.swift` | 探测对端、拉起/杀掉 tap、pong 看门 |
 | `Tap.swift` | 键鼠钩子 + UDP |
 | `flake.nix` | 用本机 Xcode 27 编 app |
 | `AppIcon.icon/` | 液态玻璃程序图标 |
+| `kikibridge-template.png` | 菜单栏模板图 |
+| `karabiner-kikibridge.json` | Karabiner 规则 |
 
 许可证：GPL-3.0-or-later

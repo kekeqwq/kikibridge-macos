@@ -1,5 +1,5 @@
 {
-  description = "KikiBridge macOS sender — Swift 0.7.24, Xcode 27 SDK";
+  description = "KikiBridge macOS sender — Swift 0.7.25, Xcode 27 SDK";
 
   nixConfig = {
     sandbox = false;
@@ -30,7 +30,7 @@
           triple = if system == "aarch64-darwin" then "arm64-apple-macos27.0" else "x86_64-apple-macos27.0";
           pkg = pkgs.stdenv.mkDerivation {
             pname = "kikibridge";
-            version = "0.7.24";
+            version = "0.7.25";
             src = lib.cleanSource ./.;
             nativeBuildInputs = [ pkgs.actool ];
             # Do not set __impureHostDeps — nix rejects /usr/bin/clang.
@@ -72,11 +72,8 @@
               cp kikibridge $app/Contents/MacOS/kikibridge
               cp Info.plist $app/Contents/Info.plist
               printf 'APPL????' > $app/Contents/PkgInfo
-              cp kikibridge.png $app/Contents/Resources/kikibridge.png
               cp kikibridge-template.png $app/Contents/Resources/kikibridge-template.png
               cp karabiner-kikibridge.json $app/Contents/Resources/karabiner-kikibridge.json
-              cp icon.png $app/Contents/Resources/icon.png
-              cp AppIcon.icon/Assets/girl.png $app/Contents/Resources/girl.png
               cp -R AppIcon.icon $app/Contents/Resources/AppIcon.icon
               actool AppIcon.icon \
                 --compile $app/Contents/Resources \

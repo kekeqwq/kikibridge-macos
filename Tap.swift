@@ -1,7 +1,6 @@
 import AppKit
 import ApplicationServices
 import Darwin
-import IOKit.hid
 
 enum Tap {
     static let port: UInt16 = 5000
@@ -33,8 +32,6 @@ private final class Worker {
     var escaping = false
     var hidden = false
     var quietUntil: UInt64 = 0
-    var accDx: Int32 = 0
-    var accDy: Int32 = 0
     var btn: [UInt8] = [0, 0, 0, 0]
     var sock: Int32 = -1
     var guardFd: Int32 = -1
@@ -44,12 +41,10 @@ private final class Worker {
     var keyTap: CFMachPort?
     var mouseTap: CFMachPort?
     var mouseListen: CFMachPort?
-    var hid: IOHIDManager?
     var host = "deck"
     var resolveFails = 0
     var park = CGPoint.zero
     let keyMap: [Int]
-    let hidMap: [Int]
 
     init() {
         var km = [Int](repeating: 0, count: 128)
@@ -85,37 +80,6 @@ private final class Worker {
         km[0x7E]=103
         km[0x48]=115; km[0x49]=114; km[0x4A]=113
         keyMap = km
-
-        var hm = [Int](repeating: 0, count: 256)
-        hm[0x04]=30; hm[0x05]=48; hm[0x06]=46; hm[0x07]=32
-        hm[0x08]=18; hm[0x09]=33; hm[0x0A]=34; hm[0x0B]=35
-        hm[0x0C]=23; hm[0x0D]=36; hm[0x0E]=37; hm[0x0F]=38
-        hm[0x10]=50; hm[0x11]=49; hm[0x12]=24; hm[0x13]=25
-        hm[0x14]=16; hm[0x15]=19; hm[0x16]=31; hm[0x17]=20
-        hm[0x18]=22; hm[0x19]=47; hm[0x1A]=17; hm[0x1B]=45
-        hm[0x1C]=21; hm[0x1D]=44
-        hm[0x1E]=2;  hm[0x1F]=3;  hm[0x20]=4;  hm[0x21]=5
-        hm[0x22]=6;  hm[0x23]=7;  hm[0x24]=8;  hm[0x25]=9
-        hm[0x26]=10; hm[0x27]=11
-        hm[0x28]=28; hm[0x29]=1;  hm[0x2A]=14; hm[0x2B]=15
-        hm[0x2C]=57; hm[0x2D]=12; hm[0x2E]=13; hm[0x2F]=26
-        hm[0x30]=27; hm[0x31]=43; hm[0x33]=39; hm[0x34]=40
-        hm[0x35]=41; hm[0x36]=51; hm[0x37]=52; hm[0x38]=53
-        hm[0x39]=58
-        hm[0x3A]=59; hm[0x3B]=60; hm[0x3C]=61; hm[0x3D]=62
-        hm[0x3E]=63; hm[0x3F]=64; hm[0x40]=65; hm[0x41]=66
-        hm[0x42]=67; hm[0x43]=68; hm[0x44]=87; hm[0x45]=88
-        hm[0x46]=99; hm[0x47]=70; hm[0x48]=119
-        hm[0x49]=110; hm[0x4A]=102; hm[0x4B]=104; hm[0x4C]=111
-        hm[0x4D]=107; hm[0x4E]=109; hm[0x4F]=106; hm[0x50]=105
-        hm[0x51]=108; hm[0x52]=103
-        hm[0x53]=69; hm[0x54]=98; hm[0x55]=55; hm[0x56]=74
-        hm[0x57]=78; hm[0x58]=96
-        hm[0x59]=71; hm[0x5A]=72; hm[0x5B]=73; hm[0x5C]=75
-        hm[0x5D]=76; hm[0x5E]=77; hm[0x5F]=79; hm[0x60]=80
-        hm[0x61]=81; hm[0x62]=82; hm[0x63]=83
-        hm[0x65]=127
-        hidMap = hm
     }
 
     func run(arguments: [String]) -> Int32 {
@@ -314,8 +278,6 @@ private final class Worker {
         let pkt: [UInt8] = [4, UInt8(b), d, c]
         send(pkt)
         btn[b] = d
-        accDx = 0
-        accDy = 0
         if d == 0 {
             quietUntil = DispatchTime.now().uptimeNanoseconds + 400_000_000
         } else {
@@ -540,17 +502,6 @@ private final class Worker {
         }
     }
 
-    private func hidValue(_ value: IOHIDValue) {
-        _ = value
-    }
-
-    private func hidSkip(_ el: IOHIDElement) -> Bool {
-        let dev = IOHIDElementGetDevice(el)
-        guard let prod = IOHIDDeviceGetProperty(dev, kIOHIDProductKey as CFString) as? String else { return false }
-        let n = prod.lowercased()
-        return n.contains("karabiner") || n.contains("virtual")
-    }
-
     private enum TapKind { case key, listen, eat }
 
     private func makeTap2(_ loc: CGEventTapLocation, _ mask: CGEventMask, options: CGEventTapOptions, kind: TapKind) -> CFMachPort? {
@@ -603,11 +554,6 @@ private final class Worker {
         if let t = mouseListen { CGEvent.tapEnable(tap: t, enable: false) }
         if let t = mouseTap { CGEvent.tapEnable(tap: t, enable: false) }
         keyTap = nil; mouseListen = nil; mouseTap = nil
-        if let h = hid {
-            IOHIDManagerClose(h, IOOptionBits(kIOHIDOptionsTypeNone))
-            IOHIDManagerUnscheduleFromRunLoop(h, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
-            hid = nil
-        }
         if sock >= 0 { _ = close(sock); sock = -1 }
         if guardFd >= 0 { _ = close(guardFd); guardFd = -1 }
         postState("dead")
