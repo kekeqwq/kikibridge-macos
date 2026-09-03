@@ -1,4 +1,4 @@
-# KikiBridge 0.7.26（macOS sender）
+# KikiBridge 0.7.27（macOS sender）
 
 macOS 27 托盘管理器。真正抓键鼠的是同一条二进制的 `--tap` 子进程；管理器退出（含崩溃、强制退出）会带走它。
 
@@ -69,7 +69,7 @@ nix run  --option sandbox false
 
 ## 界面
 
-Dock / 面板 / 关于：`AppIcon.icon` → Assets.car（系统液态玻璃）。托盘：`kikibridge-template.png` 白色剪影。
+Dock / 关于：`AppIcon.icon` → Assets.car。面板 banner：`kikibridge.png`。托盘：`kikibridge-template.png`。
 
 ## 源码
 
@@ -81,6 +81,7 @@ Dock / 面板 / 关于：`AppIcon.icon` → Assets.car（系统液态玻璃）�
 | `Tap.swift` | 键鼠钩子 + UDP |
 | `flake.nix` | 用本机 Xcode 27 编 app |
 | `AppIcon.icon/` | 液态玻璃程序图标 |
+| `kikibridge.png` | 面板 banner（桥上的女孩） |
 | `kikibridge-template.png` | 菜单栏模板图 |
 | `karabiner-kikibridge.json` | Karabiner 规则 |
 

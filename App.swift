@@ -100,12 +100,12 @@ struct PanelView: View {
 
     var body: some View {
         VStack(spacing: 22) {
-            if let img = kbGirl() {
+            if let img = bundleImage("kikibridge") {
                 Image(nsImage: img)
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()
-                    .frame(width: 128, height: 128)
+                    .frame(width: 380, height: 190)
             }
             Text("点选对端，再开桥。⌘Tab 切走即回本机。退出本程序会关掉桥。")
                 .font(.body)
