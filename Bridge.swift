@@ -4,7 +4,7 @@ import Darwin
 import Foundation
 import MachO
 
-let kVersion = "0.7.27"
+let kVersion = "0.7.28"
 let kUpdated = "2026-09-02"
 let kPort: UInt16 = 5000
 

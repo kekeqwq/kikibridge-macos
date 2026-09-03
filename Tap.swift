@@ -353,7 +353,7 @@ private final class Worker {
         }
         setBridged(false)
         let pid = lastOther
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
             if pid > 0, let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated {
                 app.activate()
             } else {
@@ -365,9 +365,8 @@ private final class Worker {
                 }
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                guard let self else { return }
-                self.escaping = false
-                self.cmdTab = false
+                self?.escaping = false
+                self?.cmdTab = false
             }
         }
     }
