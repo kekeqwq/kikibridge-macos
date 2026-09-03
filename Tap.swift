@@ -29,6 +29,7 @@ private final class Worker {
     var winDown = false
     var lastPong: UInt64 = 0
     var lostPeer = false
+    var lastOther: pid_t = 0
     var escaping = false
     var hidden = false
     var quietUntil: UInt64 = 0
@@ -486,8 +487,8 @@ private final class Worker {
         if mouseQuiet { return Unmanaged.passUnretained(ev) }
         switch type {
         case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
-            var dx = Int32(ev.getIntegerValueField(.mouseEventDeltaX))
-            var dy = Int32(ev.getIntegerValueField(.mouseEventDeltaY))
+            let dx = Int32(ev.getIntegerValueField(.mouseEventDeltaX))
+            let dy = Int32(ev.getIntegerValueField(.mouseEventDeltaY))
             if dx != 0 || dy != 0 {
                 let t = DispatchTime.now().uptimeNanoseconds
                 if t < quietUntil {
