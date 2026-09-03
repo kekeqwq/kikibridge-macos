@@ -9,15 +9,13 @@ func kbApplyGlass(_ w: NSWindow) {
     w.isOpaque = false
 }
 
-func kbAppIcon() -> NSImage {
-    if let i = NSImage(named: "AppIcon") { return i }
-    return NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
-}
-
 func kbShowInDock() {
-    NSApp.applicationIconImage = kbAppIcon()
     NSApp.setActivationPolicy(.regular)
     NSApp.activate()
+}
+
+func kbGirl() -> NSImage? {
+    bundleImage("girl")
 }
 
 @MainActor
@@ -102,11 +100,13 @@ struct PanelView: View {
 
     var body: some View {
         VStack(spacing: 22) {
-            Image(nsImage: kbAppIcon())
-                .resizable()
-                .interpolation(.high)
-                .scaledToFit()
-                .frame(width: 128, height: 128)
+            if let img = kbGirl() {
+                Image(nsImage: img)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .frame(width: 128, height: 128)
+            }
             Text("点选对端，再开桥。⌘Tab 切走即回本机。退出本程序会关掉桥。")
                 .font(.body)
                 .foregroundStyle(.secondary)
@@ -176,11 +176,13 @@ struct PanelView: View {
 struct AboutView: View {
     var body: some View {
         VStack(spacing: 12) {
-            Image(nsImage: kbAppIcon())
-                .resizable()
-                .interpolation(.high)
-                .scaledToFit()
-                .frame(width: 128, height: 128)
+            if let img = kbGirl() {
+                Image(nsImage: img)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .frame(width: 128, height: 128)
+            }
             Text("KikiBridge").font(.title2).fontWeight(.semibold)
             Text("版本 \(kVersion)")
                 .font(.callout)

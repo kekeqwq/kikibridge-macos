@@ -1,4 +1,4 @@
-# KikiBridge 0.7.25（macOS sender）
+# KikiBridge 0.7.26（macOS sender）
 
 macOS 27 托盘管理器。真正抓键鼠的是同一条二进制的 `--tap` 子进程；管理器退出（含崩溃、强制退出）会带走它。
 
